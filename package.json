@@ -1,15 +1,29 @@
 {
-	"name": "hirik-user-service",
-	"type": "module",
-	"scripts": {
-		"dev": "wrangler dev",
-		"deploy": "wrangler deploy --minify",
-		"cf-typegen": "wrangler types --env-interface CloudflareBindings"
-	},
-	"dependencies": {
-		"hono": "^4.8.10"
-	},
-	"devDependencies": {
-		"wrangler": "^4.26.1"
-	}
+  "name": "hirik-user-service",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "db:generate": "dotenv -e .dev.vars -- prisma generate",
+    "db:migrate": "dotenv -e .dev.vars -- prisma migrate dev",
+    "db:migrate:deploy": "dotenv -e .dev.vars -- prisma migrate deploy",
+    "db:studio": "dotenv -e .dev.vars -- prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-d1": "^6.13.0",
+    "@prisma/client": "^6.13.0",
+    "@prisma/extension-accelerate": "^2.0.2",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.2",
+    "hono": "^4.8.10",
+    "murmurhash": "^2.0.1",
+    "prisma": "^6.13.0",
+    "zod": "^4.0.14"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "dotenv-cli": "^9.0.0",
+    "wrangler": "^4.26.1"
+  }
 }

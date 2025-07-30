@@ -1,0 +1,554 @@
+{
+  "info": {
+    "name": "Hirik User Service API",
+    "description": "Complete API collection for Hirik User Service with authentication, user management, and profile operations",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url_local",
+      "value": "http://localhost:8787/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "base_url_prod",
+      "value": "https://your-worker.your-subdomain.workers.dev/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "profile_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "education_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "experience_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set base URL based on environment",
+          "if (pm.environment.name === 'Production') {",
+          "    pm.collectionVariables.set('base_url', pm.collectionVariables.get('base_url_prod'));",
+          "} else {",
+          "    pm.collectionVariables.set('base_url', pm.collectionVariables.get('base_url_local'));",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Health check endpoint - no authentication required"
+      },
+      "response": []
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login with Phone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.userId) {",
+                  "        pm.collectionVariables.set('user_id', response.userId);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+1234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login-with-phone",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login-with-phone"]
+            },
+            "description": "Initiate phone-based authentication - sends OTP to phone number"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.accessToken) {",
+                  "        pm.collectionVariables.set('access_token', response.accessToken);",
+                  "    }",
+                  "    if (response.refreshToken) {",
+                  "        pm.collectionVariables.set('refresh_token', response.refreshToken);",
+                  "    }",
+                  "    if (response.user && response.user.id) {",
+                  "        pm.collectionVariables.set('user_id', response.user.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+1234567890\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/verify-otp",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "verify-otp"]
+            },
+            "description": "Verify OTP and get access/refresh tokens"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.accessToken) {",
+                  "        pm.collectionVariables.set('access_token', response.accessToken);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh-token",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh-token"]
+            },
+            "description": "Refresh access token using refresh token"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "item": [
+        {
+          "name": "Get Current User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.id) {",
+                  "        pm.collectionVariables.set('user_id', response.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/user/me",
+              "host": ["{{base_url}}"],
+              "path": ["user", "me"]
+            },
+            "description": "Get current authenticated user information"
+          },
+          "response": []
+        },
+        {
+          "name": "Get User Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.id) {",
+                  "        pm.collectionVariables.set('profile_id', response.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/user/profile",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile"]
+            },
+            "description": "Get user profile information"
+          },
+          "response": []
+        },
+        {
+          "name": "Update User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"bio\": \"Software Developer with 5 years of experience\",\n  \"location\": \"San Francisco, CA\",\n  \"website\": \"https://johndoe.dev\",\n  \"linkedinUrl\": \"https://linkedin.com/in/johndoe\",\n  \"githubUrl\": \"https://github.com/johndoe\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/user/profile",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile"]
+            },
+            "description": "Update user profile information"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Education Management",
+      "item": [
+        {
+          "name": "Get Education by Profile ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/user/profile/education/{{profile_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile", "education", "{{profile_id}}"]
+            },
+            "description": "Get all education entries for a profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Education",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.id) {",
+                  "        pm.collectionVariables.set('education_id', response.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"institution\": \"Stanford University\",\n  \"degree\": \"Bachelor of Science\",\n  \"fieldOfStudy\": \"Computer Science\",\n  \"startDate\": \"2018-09-01\",\n  \"endDate\": \"2022-06-15\",\n  \"grade\": \"3.8 GPA\",\n  \"description\": \"Focused on software engineering and machine learning\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/user/profile/education/{{profile_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile", "education", "{{profile_id}}"]
+            },
+            "description": "Add new education entry to profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Education",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"institution\": \"Stanford University\",\n  \"degree\": \"Master of Science\",\n  \"fieldOfStudy\": \"Artificial Intelligence\",\n  \"startDate\": \"2022-09-01\",\n  \"endDate\": \"2024-06-15\",\n  \"grade\": \"3.9 GPA\",\n  \"description\": \"Advanced study in AI and deep learning\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/user/profile/education/{{education_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile", "education", "{{education_id}}"]
+            },
+            "description": "Update existing education entry"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Education",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/user/profile/education/{{education_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile", "education", "{{education_id}}"]
+            },
+            "description": "Delete education entry"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Experience Management",
+      "item": [
+        {
+          "name": "Get Experience by Profile ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/user/profile/experiance/{{profile_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile", "experiance", "{{profile_id}}"]
+            },
+            "description": "Get all experience entries for a profile (note: endpoint uses 'experiance' for mobile compatibility)"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Experience",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.id) {",
+                  "        pm.collectionVariables.set('experience_id', response.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company\": \"Google Inc.\",\n  \"position\": \"Software Engineer\",\n  \"location\": \"Mountain View, CA\",\n  \"startDate\": \"2022-07-01\",\n  \"endDate\": null,\n  \"isCurrent\": true,\n  \"description\": \"Developing scalable backend services using Go and Python. Working on distributed systems and microservices architecture.\",\n  \"skills\": [\"Go\", \"Python\", \"Kubernetes\", \"gRPC\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/user/profile/experiance/{{profile_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile", "experiance", "{{profile_id}}"]
+            },
+            "description": "Add new experience entry to profile"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Experience",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company\": \"Google Inc.\",\n  \"position\": \"Senior Software Engineer\",\n  \"location\": \"Mountain View, CA\",\n  \"startDate\": \"2022-07-01\",\n  \"endDate\": null,\n  \"isCurrent\": true,\n  \"description\": \"Leading development of scalable backend services. Mentoring junior engineers and designing system architecture.\",\n  \"skills\": [\"Go\", \"Python\", \"Kubernetes\", \"gRPC\", \"System Design\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/user/profile/experiance/{{experience_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile", "experiance", "{{experience_id}}"]
+            },
+            "description": "Update existing experience entry"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Experience",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/user/profile/experiance/{{experience_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["user", "profile", "experiance", "{{experience_id}}"]
+            },
+            "description": "Delete experience entry"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "environment": [
+    {
+      "name": "Local Development",
+      "values": [
+        {
+          "key": "base_url",
+          "value": "http://localhost:8787/api/v1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "Production",
+      "values": [
+        {
+          "key": "base_url",
+          "value": "https://your-worker.your-subdomain.workers.dev/api/v1",
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
