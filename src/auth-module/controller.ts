@@ -12,6 +12,8 @@ class UserController {
   private readonly OTP_GENERATION_LIMIT = 3; // Max OTPs per phone number per 15 minutes
 
   constructor(env?: any) {
+    console.log({ env });
+
     if (env?.DB) {
       // Use D1 adapter for Cloudflare Workers
       const adapter = new PrismaD1(env.DB);
@@ -45,15 +47,15 @@ class UserController {
     // Check if user has exceeded max attempts
     if (attemptData.count >= this.MAX_OTP_ATTEMPTS) {
       const lockoutUntil = attemptData.lastAttempt + this.OTP_LOCKOUT_DURATION;
-      return { 
-        allowed: false, 
-        lockoutUntil 
+      return {
+        allowed: false,
+        lockoutUntil
       };
     }
 
-    return { 
-      allowed: true, 
-      remainingAttempts: this.MAX_OTP_ATTEMPTS - attemptData.count 
+    return {
+      allowed: true,
+      remainingAttempts: this.MAX_OTP_ATTEMPTS - attemptData.count
     };
   }
 
@@ -69,9 +71,9 @@ class UserController {
       if (now - attemptData.lastAttempt > this.OTP_LOCKOUT_DURATION) {
         this.otpAttempts.set(key, { count: 1, lastAttempt: now });
       } else {
-        this.otpAttempts.set(key, { 
-          count: attemptData.count + 1, 
-          lastAttempt: now 
+        this.otpAttempts.set(key, {
+          count: attemptData.count + 1,
+          lastAttempt: now
         });
       }
     }
@@ -90,7 +92,7 @@ class UserController {
       userId,
       ...additionalInfo
     };
-    
+
     // In production, this would be sent to a security monitoring system
     console.log('SECURITY_EVENT:', JSON.stringify(logEntry));
   }
@@ -99,10 +101,10 @@ class UserController {
   private async sendSMS(phoneNumber: string, message: string): Promise<boolean> {
     // TODO: Replace with actual SMS service (Twilio, AWS SNS, etc.)
     console.log(`SMS to ${phoneNumber}: ${message}`);
-    
+
     // Simulate SMS sending delay
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     return true; // In production, return actual success status
   }
 
@@ -111,7 +113,7 @@ class UserController {
       userId,
       phoneNumber,
       type: 'access',
-      exp: Math.floor(Date.now() / 1000) + (15 * 60) // 15 minutes
+      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // 24 hr
     };
 
     return await sign(
@@ -169,8 +171,8 @@ class UserController {
       // Phase 3: Check rate limiting
       const rateCheck = this.checkRateLimit(phoneNumber);
       if (!rateCheck.allowed) {
-        this.logSecurityEvent('LOGIN_RATE_LIMITED', phoneNumber, undefined, { 
-          lockoutUntil: rateCheck.lockoutUntil 
+        this.logSecurityEvent('LOGIN_RATE_LIMITED', phoneNumber, undefined, {
+          lockoutUntil: rateCheck.lockoutUntil
         });
         return c.json({
           success: false,
@@ -246,8 +248,8 @@ class UserController {
       }
 
       // Log successful OTP generation
-      this.logSecurityEvent('OTP_GENERATED', phoneNumber, userId, { 
-        isNewUser 
+      this.logSecurityEvent('OTP_GENERATED', phoneNumber, userId, {
+        isNewUser
       });
 
       return c.json({
@@ -284,8 +286,8 @@ class UserController {
       // Phase 3: Check rate limiting for OTP verification
       const rateCheck = this.checkRateLimit(`verify_${phoneNumber}`);
       if (!rateCheck.allowed) {
-        this.logSecurityEvent('OTP_VERIFY_RATE_LIMITED', phoneNumber, undefined, { 
-          lockoutUntil: rateCheck.lockoutUntil 
+        this.logSecurityEvent('OTP_VERIFY_RATE_LIMITED', phoneNumber, undefined, {
+          lockoutUntil: rateCheck.lockoutUntil
         });
         return c.json({
           success: false,
@@ -362,13 +364,13 @@ class UserController {
       // OTP is valid - clear failed attempts and mark as verified
       this.clearFailedAttempts(`verify_${phoneNumber}`);
       this.clearFailedAttempts(phoneNumber);
-      
+
       await this.prisma.oTP.update({
         where: {
           phoneNumber_countryCode: {
             phoneNumber,
             countryCode
-          }  
+          }
         },
         data: {
           verified: true

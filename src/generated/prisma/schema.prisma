@@ -1,0 +1,251 @@
+// Cloudflare D1 Schema for User Edge Database
+// This schema contains ALL user-related data for fast edge access
+// Used exclusively by hirik-user-service
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  phoneNumber String
+  countryCode String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  profiles                Profile[]
+  savedJobs               SavedJob[]
+  jobSearchPreferences    JobSearchPreferences?
+  notificationPreferences NotificationPreferences?
+  fcmTokens               FCMToken[]
+
+  @@unique([phoneNumber, countryCode])
+  @@map("users")
+}
+
+model Profile {
+  id                String   @id @default(uuid())
+  userId            String
+  jobRoleId         String? // Logical reference to JobRole.id (in PostgreSQL)
+  fullName          String?
+  email             String?  @unique
+  bio               String?
+  location          String? // JSON as text
+  expectedSalary    String?
+  yearsOfExperience String?
+  availableToStart  String?
+  immediateJoiner   Boolean?
+  preferredRole     String?
+  profilePicture    String? // JSON as text
+  cvLink            String? // JSON as text
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  education    Education[]
+  experience   Experience[]
+  skillUserMap SkillUserMap[]
+  resumes      Resume[]
+
+  @@map("profiles")
+}
+
+model RecruiterProfile {
+  id                             String   @id @default(uuid())
+  userId                         String   @unique
+  fullName                       String?
+  companyId                      String? // Logical reference to Company.id (in PostgreSQL)
+  jobRoleId                      String? // Logical reference to JobRole.id (in PostgreSQL)
+  workEmail                      String?
+  location                       String? // JSON as text
+  isVerified                     Boolean  @default(false)
+  recruiterVerificationMethodsId String?
+  verifiedBy                     String?
+  verificationDetails            String? // JSON as text
+  createdAt                      DateTime @default(now()) @map("created_at")
+  updatedAt                      DateTime @updatedAt @map("updated_at")
+
+  recruiterVerificationMethods RecruiterVerificationMethods? @relation(fields: [recruiterVerificationMethodsId], references: [id])
+
+  @@map("recruiter_profiles")
+}
+
+model RecruiterVerificationMethods {
+  id               String             @id @default(uuid())
+  method           String
+  RecruiterProfile RecruiterProfile[]
+
+  @@map("recruiter_verification_methods")
+}
+
+model SavedJob {
+  id        String   @id @default(uuid())
+  userId    String
+  jobId     String // Logical reference to Job.id (in PostgreSQL)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@map("saved_jobs")
+}
+
+model SkillUserMap {
+  id        String   @id @default(uuid())
+  skillId   String   @map("skill_id") // Logical reference to Skill.id (in PostgreSQL)
+  profileId String   @map("profile_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, profileId])
+  @@map("skill_user_map")
+}
+
+model Education {
+  id          String  @id @default(uuid())
+  profileId   String
+  degree      String
+  institution String
+  location    String? // JSON as text
+  startDate   String
+  endDate     String?
+  grade       String?
+  description String?
+  isCurrent   Boolean
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("education")
+}
+
+model Experience {
+  id                       String  @id @default(uuid())
+  profileId                String
+  jobRoleId                String? // Logical reference to JobRole.id (in PostgreSQL)
+  companyId                String // Logical reference to Company.id (in PostgreSQL)
+  location                 String? // JSON as text
+  startDate                String
+  endDate                  String?
+  isCurrent                Boolean
+  rolesAndResponsibilities String?
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("experience")
+}
+
+model Resume {
+  id         String   @id @default(uuid())
+  profileId  String
+  title      String // Resume title/name (e.g., "Software Engineer Resume", "Frontend Developer CV")
+  fileName   String // Original filename when uploaded
+  fileUrl    String // Cloudflare R2 URL or file storage location
+  fileSize   Int? // File size in bytes
+  mimeType   String // File MIME type (application/pdf, application/msword, etc.)
+  isDefault  Boolean  @default(false) // Whether this is the default/primary resume
+  isActive   Boolean  @default(true) // Whether the resume is active/visible
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("resumes")
+}
+
+model NotificationPreferences {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  jobMatches   Boolean  @default(true)
+  applications Boolean  @default(true)
+  interviews   Boolean  @default(true)
+  messages     Boolean  @default(true)
+  emailEnabled Boolean  @default(true)
+  pushEnabled  Boolean  @default(true)
+  quietHours   String? // JSON as text
+  frequency    String   @default("immediate") // immediate, daily, weekly
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model JobSearchPreferences {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  // Job preferences
+  desiredJobTypes String // JSON array as text
+  minSalary       Int? // Minimum acceptable salary
+  maxSalary       Int? // Maximum expected salary
+  salaryCurrency  String @default("USD")
+  salaryPeriod    String @default("yearly") // yearly, monthly, hourly
+
+  // Location preferences
+  desiredLocations    String? // JSON array as text
+  isRemoteOnly        Boolean @default(false)
+  isWillingToRelocate Boolean @default(false)
+  maxCommuteMiles     Int? // Maximum commute distance in miles
+
+  // Skill preferences
+  desiredRoles      String // JSON array as text - job role IDs
+  desiredSkills     String // JSON array as text - skill IDs
+  yearsOfExperience String? // Experience level
+
+  // Company preferences
+  desiredIndustries String // JSON array as text
+  minCompanySize    Int? // Minimum company size (employees)
+  maxCompanySize    Int? // Maximum company size (employees)
+  excludedCompanies String // JSON array as text - company IDs to exclude
+
+  // Search behavior
+  isSearchActive Boolean   @default(true) // Whether user is actively looking
+  lastSearchDate DateTime? // Last time user performed a search
+  savedSearches  String? // JSON array as text - saved search parameters
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("job_search_preferences")
+}
+
+model FCMToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String // ios, android
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("fcm_tokens")
+}
+
+model OTP {
+  id          String   @id @default(uuid())
+  phoneNumber String
+  countryCode String
+  otp         String
+  expiresAt   DateTime
+  attempts    Int      @default(0)
+  userId      String?
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([phoneNumber, countryCode])
+  @@map("otps")
+}

@@ -1,9 +1,13 @@
 import { Hono } from "hono";
-import { jwt, type JwtVariables } from 'hono/jwt'
+import { jwt, verify, type JwtVariables } from 'hono/jwt'
 
 
 import authRouter from "./auth-module/routes";
 import userRouter from "./user-module/routes";
+import resumeRouter from "./resume-module/routes";
+import recruiterRouter from "./recruiter-module/routes";
+import preferencesRouter from "./preferences-module/routes";
+import educationRouter from "./education-module/routes";
 
 const app = new Hono<{ Variables: JwtVariables }>().basePath("/api/v1");
 
@@ -13,15 +17,27 @@ app.get("/health", (c) => {
 });
 app.route("/auth", authRouter);
 
-app.use('*', (c, next) => {
-  const middleware = jwt({
-    secret: (c.env as any).ACCESS_TOKEN_SECRET,
-  });
-  return middleware(c, next);
-});
+app.use('*', async (c, next) => {
+  const jwtMiddleware = jwt({
+    secret: c.env.ACCESS_TOKEN_SECRET,
+  })
+  return jwtMiddleware(c, next)
+})
 // Mount auth routes
 
 // Mount user routes
 app.route("/user", userRouter);
+
+// Mount resume routes
+app.route("/resumes", resumeRouter);
+
+// Mount recruiter routes
+app.route("/recruiter", recruiterRouter);
+
+// Mount preferences routes
+app.route("/preferences", preferencesRouter);
+
+// Mount education routes
+app.route("/education", educationRouter);
 
 export default app;

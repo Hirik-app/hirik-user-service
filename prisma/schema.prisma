@@ -4,6 +4,7 @@
 
 generator client {
   provider        = "prisma-client-js"
+  output          = "../src/generated/prisma"
   previewFeatures = ["driverAdapters"]
 }
 
@@ -51,6 +52,7 @@ model Profile {
   education    Education[]
   experience   Experience[]
   skillUserMap SkillUserMap[]
+  resumes      Resume[]
 
   @@map("profiles")
 }
@@ -138,6 +140,24 @@ model Experience {
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@map("experience")
+}
+
+model Resume {
+  id         String   @id @default(uuid())
+  profileId  String
+  title      String // Resume title/name (e.g., "Software Engineer Resume", "Frontend Developer CV")
+  fileName   String // Original filename when uploaded
+  fileUrl    String // Cloudflare R2 URL or file storage location
+  fileSize   Int? // File size in bytes
+  mimeType   String // File MIME type (application/pdf, application/msword, etc.)
+  isDefault  Boolean  @default(false) // Whether this is the default/primary resume
+  isActive   Boolean  @default(true) // Whether the resume is active/visible
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("resumes")
 }
 
 model NotificationPreferences {

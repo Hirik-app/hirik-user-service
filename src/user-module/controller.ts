@@ -1,13 +1,11 @@
 import { Context } from 'hono';
 import { PrismaClient } from '@prisma/client';
 import { PrismaD1 } from '@prisma/adapter-d1';
-import { 
-  profileSchema, educationSchema, experienceSchema, skillAssociationSchema,
-  jobSearchPreferencesSchema, notificationPreferencesSchema, fcmTokenSchema,
-  recruiterProfileSchema, type ProfileInput, type EducationInput, 
-  type ExperienceInput, type SkillAssociationInput, type JobSearchPreferencesInput,
-  type NotificationPreferencesInput, type FCMTokenInput, type RecruiterProfileInput
+import {
+    profileSchema, experienceSchema, skillAssociationSchema,
+    type ProfileInput, type ExperienceInput, type SkillAssociationInput
 } from './schemas';
+import { createMeiliSearchClient, MeiliSearchClient } from '../utils/meilisearch';
 
 interface JWTPayload {
     userId: string;
@@ -18,6 +16,7 @@ interface JWTPayload {
 
 class UserController {
     private prisma: PrismaClient;
+    private meilisearch: MeiliSearchClient | null;
 
     constructor(env?: any) {
         if (env?.DB) {
@@ -28,12 +27,22 @@ class UserController {
             // Fallback for development/testing
             this.prisma = new PrismaClient();
         }
+        
+        // Initialize Meilisearch client
+        this.meilisearch = createMeiliSearchClient(env);
+        
+        // Ensure indexes exist if Meilisearch is available
+        if (this.meilisearch) {
+            this.meilisearch.ensureProfilesIndexExists().catch(error => {
+                console.error('Failed to ensure profiles index exists:', error);
+            });
+        }
     }
 
     private getUserFromJWT(c: Context): { userId: string; phoneNumber: string } | null {
         try {
             const payload = c.get('jwtPayload') as JWTPayload;
-            
+
             if (!payload || payload.type !== 'access') {
                 return null;
             }
@@ -112,9 +121,22 @@ class UserController {
                 }
             });
 
+            let jobRole = null;
+            if (this.meilisearch && profile?.jobRoleId) {
+                try {
+                    jobRole = await this.meilisearch.getClient().index('job_roles').getDocument(profile.jobRoleId);
+                } catch (error) {
+                    console.error('Error fetching job role from Meilisearch:', error);
+                    // Continue without job role data
+                }
+            }
+
             return c.json({
                 success: true,
-                data: profile
+                data: {
+                    ...profile,
+                    jobRole
+                }
             }, 200);
 
         } catch (error) {
@@ -137,7 +159,7 @@ class UserController {
             }
 
             const body = await c.req.json();
-            
+
             // Validate input
             const validationResult = profileSchema.safeParse(body);
             if (!validationResult.success) {
@@ -155,6 +177,26 @@ class UserController {
                 }
             });
 
+            // Transform complex objects to JSON strings for database storage
+            const profileData = {
+                ...validationResult.data,
+                location: validationResult.data.location ?
+                    (typeof validationResult.data.location === 'string' ?
+                        validationResult.data.location :
+                        JSON.stringify(validationResult.data.location)) :
+                    undefined,
+                profilePicture: validationResult.data.profilePicture ?
+                    (typeof validationResult.data.profilePicture === 'string' ?
+                        validationResult.data.profilePicture :
+                        JSON.stringify(validationResult.data.profilePicture)) :
+                    undefined,
+                cvLink: validationResult.data.cvLink ?
+                    (typeof validationResult.data.cvLink === 'string' ?
+                        validationResult.data.cvLink :
+                        JSON.stringify(validationResult.data.cvLink)) :
+                    undefined
+            };
+
             let profile;
 
             if (existingProfile) {
@@ -164,7 +206,7 @@ class UserController {
                         id: existingProfile.id
                     },
                     data: {
-                        ...validationResult.data,
+                        ...profileData,
                         userId: userInfo.userId,
                         updatedAt: new Date()
                     }
@@ -173,10 +215,20 @@ class UserController {
                 // Create new profile
                 profile = await this.prisma.profile.create({
                     data: {
-                        ...validationResult.data,
+                        ...profileData,
                         userId: userInfo.userId
                     }
                 });
+            }
+
+            // Index profile in Meilisearch for search functionality
+            if (this.meilisearch) {
+                try {
+                    await this.meilisearch.addOrUpdateProfile(profile);
+                } catch (error) {
+                    console.error('Error indexing profile in Meilisearch:', error);
+                    // Continue without search indexing - don't break the profile update
+                }
             }
 
             return c.json({
@@ -193,243 +245,6 @@ class UserController {
         }
     }
 
-    // Education endpoints
-    async getEducationByProfileId(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const profileId = c.req.param('profileId');
-
-            if (!profileId) {
-                return c.json({
-                    success: false,
-                    message: 'Profile ID is required'
-                }, 400);
-            }
-
-            // Verify profile belongs to user
-            const profile = await this.prisma.profile.findFirst({
-                where: {
-                    id: profileId,
-                    userId: userInfo.userId
-                }
-            });
-
-            if (!profile) {
-                return c.json({
-                    success: false,
-                    message: 'Profile not found or unauthorized'
-                }, 404);
-            }
-
-            const education = await this.prisma.education.findMany({
-                where: {
-                    profileId
-                },
-                orderBy: {
-                    startDate: 'desc'
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: education
-            }, 200);
-
-        } catch (error) {
-            console.error('Get education error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async addEducationByProfileId(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const profileId = c.req.param('profileId');
-            const body = await c.req.json();
-
-            if (!profileId) {
-                return c.json({
-                    success: false,
-                    message: 'Profile ID is required'
-                }, 400);
-            }
-
-            // Validate input
-            const validationResult = educationSchema.safeParse(body);
-            if (!validationResult.success) {
-                return c.json({
-                    success: false,
-                    message: 'Validation error',
-                    errors: validationResult.error.issues
-                }, 400);
-            }
-
-            // Verify profile belongs to user
-            const profile = await this.prisma.profile.findFirst({
-                where: {
-                    id: profileId,
-                    userId: userInfo.userId
-                }
-            });
-
-            if (!profile) {
-                return c.json({
-                    success: false,
-                    message: 'Profile not found or unauthorized'
-                }, 404);
-            }
-
-            const education = await this.prisma.education.create({
-                data: {
-                    ...validationResult.data,
-                    profileId
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: education
-            }, 201);
-
-        } catch (error) {
-            console.error('Add education error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async updateEducationById(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const educationId = c.req.param('id');
-            const body = await c.req.json();
-
-            if (!educationId) {
-                return c.json({
-                    success: false,
-                    message: 'Education ID is required'
-                }, 400);
-            }
-
-            // Verify education belongs to user's profile
-            const education = await this.prisma.education.findFirst({
-                where: {
-                    id: educationId
-                },
-                include: {
-                    profile: true
-                }
-            });
-
-            if (!education || education.profile.userId !== userInfo.userId) {
-                return c.json({
-                    success: false,
-                    message: 'Education not found or unauthorized'
-                }, 404);
-            }
-
-            const updatedEducation = await this.prisma.education.update({
-                where: {
-                    id: educationId
-                },
-                data: body
-            });
-
-            return c.json({
-                success: true,
-                data: updatedEducation
-            }, 200);
-
-        } catch (error) {
-            console.error('Update education error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async deleteEducationById(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const educationId = c.req.param('id');
-
-            if (!educationId) {
-                return c.json({
-                    success: false,
-                    message: 'Education ID is required'
-                }, 400);
-            }
-
-            // Verify education belongs to user's profile
-            const education = await this.prisma.education.findFirst({
-                where: {
-                    id: educationId
-                },
-                include: {
-                    profile: true
-                }
-            });
-
-            if (!education || education.profile.userId !== userInfo.userId) {
-                return c.json({
-                    success: false,
-                    message: 'Education not found or unauthorized'
-                }, 404);
-            }
-
-            await this.prisma.education.delete({
-                where: {
-                    id: educationId
-                }
-            });
-
-            return c.json({
-                success: true,
-                message: 'Education deleted successfully'
-            }, 200);
-
-        } catch (error) {
-            console.error('Delete education error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
 
     // Experience endpoints
     async getExperienceByProfileId(c: Context): Promise<Response> {
@@ -787,8 +602,10 @@ class UserController {
         }
     }
 
-    // Phase 2: Job Search Preferences
-    async getJobSearchPreferences(c: Context): Promise<Response> {
+
+
+    // Search profiles functionality
+    async searchProfiles(c: Context): Promise<Response> {
         try {
             const userInfo = this.getUserFromJWT(c);
             if (!userInfo) {
@@ -798,521 +615,39 @@ class UserController {
                 }, 401);
             }
 
-            const preferences = await this.prisma.jobSearchPreferences.findUnique({
-                where: {
-                    userId: userInfo.userId
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: preferences
-            }, 200);
-
-        } catch (error) {
-            console.error('Get job search preferences error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async updateJobSearchPreferences(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
+            if (!this.meilisearch) {
                 return c.json({
                     success: false,
-                    message: 'Unauthorized'
-                }, 401);
+                    message: 'Search functionality is not available'
+                }, 503);
             }
 
-            const body = await c.req.json();
+            const query = c.req.query();
+            const search = query.q as string || query.search as string;
+            const limit = parseInt(query.limit as string) || 20;
+            const filters = query.filters as string;
 
-            // Validate input
-            const validationResult = jobSearchPreferencesSchema.safeParse(body);
-            if (!validationResult.success) {
+            if (!search || search.length < 2) {
                 return c.json({
                     success: false,
-                    message: 'Validation error',
-                    errors: validationResult.error.issues
+                    message: 'Search query must be at least 2 characters'
                 }, 400);
             }
 
-            const preferences = await this.prisma.jobSearchPreferences.upsert({
-                where: {
-                    userId: userInfo.userId
-                },
-                update: {
-                    ...validationResult.data,
-                    updatedAt: new Date()
-                },
-                create: {
-                    ...validationResult.data,
-                    userId: userInfo.userId
-                }
-            });
+            const searchResults = await this.meilisearch.searchProfiles(search, filters, limit);
 
             return c.json({
                 success: true,
-                data: preferences
-            }, 200);
-
-        } catch (error) {
-            console.error('Update job search preferences error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    // Phase 2: Notification Preferences  
-    async getNotificationPreferences(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const preferences = await this.prisma.notificationPreferences.findUnique({
-                where: {
-                    userId: userInfo.userId
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: preferences
-            }, 200);
-
-        } catch (error) {
-            console.error('Get notification preferences error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async updateNotificationPreferences(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const body = await c.req.json();
-
-            // Validate input
-            const validationResult = notificationPreferencesSchema.safeParse(body);
-            if (!validationResult.success) {
-                return c.json({
-                    success: false,
-                    message: 'Validation error',
-                    errors: validationResult.error.issues
-                }, 400);
-            }
-
-            const preferences = await this.prisma.notificationPreferences.upsert({
-                where: {
-                    userId: userInfo.userId
-                },
-                update: {
-                    ...validationResult.data,
-                    updatedAt: new Date()
-                },
-                create: {
-                    ...validationResult.data,
-                    userId: userInfo.userId
-                }
-            });
-
-            // TODO: Queue notification settings update for processing
-            console.log('TODO: Queue notification preferences update for background processing');
-
-            return c.json({
-                success: true,
-                data: preferences
-            }, 200);
-
-        } catch (error) {
-            console.error('Update notification preferences error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    // Phase 2: Saved Jobs Management
-    async getSavedJobs(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const savedJobs = await this.prisma.savedJob.findMany({
-                where: {
-                    userId: userInfo.userId
-                },
-                orderBy: {
-                    createdAt: 'desc'
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: savedJobs
-            }, 200);
-
-        } catch (error) {
-            console.error('Get saved jobs error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async saveJob(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const { jobId } = await c.req.json();
-
-            if (!jobId) {
-                return c.json({
-                    success: false,
-                    message: 'Job ID is required'
-                }, 400);
-            }
-
-            const savedJob = await this.prisma.savedJob.create({
                 data: {
-                    userId: userInfo.userId,
-                    jobId
+                    profiles: searchResults.hits,
+                    count: searchResults.hits.length,
+                    totalHits: searchResults.estimatedTotalHits,
+                    query: search
                 }
-            });
-
-            return c.json({
-                success: true,
-                data: savedJob
-            }, 201);
-
-        } catch (error) {
-            console.error('Save job error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async unsaveJob(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const jobId = c.req.param('jobId');
-
-            if (!jobId) {
-                return c.json({
-                    success: false,
-                    message: 'Job ID is required'
-                }, 400);
-            }
-
-            await this.prisma.savedJob.deleteMany({
-                where: {
-                    userId: userInfo.userId,
-                    jobId
-                }
-            });
-
-            return c.json({
-                success: true,
-                message: 'Job unsaved successfully'
             }, 200);
 
         } catch (error) {
-            console.error('Unsave job error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    // Phase 2: FCM Token Management
-    async getFCMTokens(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const tokens = await this.prisma.fCMToken.findMany({
-                where: {
-                    userId: userInfo.userId
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: tokens
-            }, 200);
-
-        } catch (error) {
-            console.error('Get FCM tokens error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async addFCMToken(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const body = await c.req.json();
-
-            // Validate input
-            const validationResult = fcmTokenSchema.safeParse(body);
-            if (!validationResult.success) {
-                return c.json({
-                    success: false,
-                    message: 'Validation error',
-                    errors: validationResult.error.issues
-                }, 400);
-            }
-
-            const token = await this.prisma.fCMToken.upsert({
-                where: {
-                    token: validationResult.data.token
-                },
-                update: {
-                    platform: validationResult.data.platform,
-                    updatedAt: new Date()
-                },
-                create: {
-                    ...validationResult.data,
-                    userId: userInfo.userId
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: token
-            }, 201);
-
-        } catch (error) {
-            console.error('Add FCM token error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async removeFCMToken(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const token = c.req.param('token');
-
-            if (!token) {
-                return c.json({
-                    success: false,
-                    message: 'Token is required'
-                }, 400);
-            }
-
-            await this.prisma.fCMToken.deleteMany({
-                where: {
-                    userId: userInfo.userId,
-                    token
-                }
-            });
-
-            return c.json({
-                success: true,
-                message: 'FCM token removed successfully'
-            }, 200);
-
-        } catch (error) {
-            console.error('Remove FCM token error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    // Phase 4: Recruiter Profile System
-    async getRecruiterProfile(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const recruiterProfile = await this.prisma.recruiterProfile.findUnique({
-                where: {
-                    userId: userInfo.userId
-                },
-                include: {
-                    recruiterVerificationMethods: true
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: recruiterProfile
-            }, 200);
-
-        } catch (error) {
-            console.error('Get recruiter profile error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async updateRecruiterProfile(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const body = await c.req.json();
-
-            // Validate input
-            const validationResult = recruiterProfileSchema.safeParse(body);
-            if (!validationResult.success) {
-                return c.json({
-                    success: false,
-                    message: 'Validation error',
-                    errors: validationResult.error.issues
-                }, 400);
-            }
-
-            const recruiterProfile = await this.prisma.recruiterProfile.upsert({
-                where: {
-                    userId: userInfo.userId
-                },
-                update: {
-                    ...validationResult.data,
-                    updatedAt: new Date()
-                },
-                create: {
-                    ...validationResult.data,
-                    userId: userInfo.userId
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: recruiterProfile
-            }, 200);
-
-        } catch (error) {
-            console.error('Update recruiter profile error:', error);
-            return c.json({
-                success: false,
-                message: 'Internal server error'
-            }, 500);
-        }
-    }
-
-    async verifyRecruiter(c: Context): Promise<Response> {
-        try {
-            const userInfo = this.getUserFromJWT(c);
-            if (!userInfo) {
-                return c.json({
-                    success: false,
-                    message: 'Unauthorized'
-                }, 401);
-            }
-
-            const recruiterId = c.req.param('recruiterId');
-            const { verificationDetails, methodId } = await c.req.json();
-
-            if (!recruiterId) {
-                return c.json({
-                    success: false,
-                    message: 'Recruiter ID is required'
-                }, 400);
-            }
-
-            // For now, auto-approve verification (in production, this would be manual review)
-            const recruiterProfile = await this.prisma.recruiterProfile.update({
-                where: {
-                    id: recruiterId
-                },
-                data: {
-                    isVerified: true,
-                    verifiedBy: userInfo.userId,
-                    verificationDetails: JSON.stringify(verificationDetails),
-                    recruiterVerificationMethodsId: methodId,
-                    updatedAt: new Date()
-                }
-            });
-
-            return c.json({
-                success: true,
-                data: recruiterProfile,
-                message: 'Recruiter verified successfully'
-            }, 200);
-
-        } catch (error) {
-            console.error('Verify recruiter error:', error);
+            console.error('Search profiles error:', error);
             return c.json({
                 success: false,
                 message: 'Internal server error'
