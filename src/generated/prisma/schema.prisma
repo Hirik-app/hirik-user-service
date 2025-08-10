@@ -58,19 +58,22 @@ model Profile {
 }
 
 model RecruiterProfile {
-  id                             String   @id @default(uuid())
-  userId                         String   @unique
-  fullName                       String?
-  companyId                      String? // Logical reference to Company.id (in PostgreSQL)
-  jobRoleId                      String? // Logical reference to JobRole.id (in PostgreSQL)
-  workEmail                      String?
-  location                       String? // JSON as text
-  isVerified                     Boolean  @default(false)
-  recruiterVerificationMethodsId String?
-  verifiedBy                     String?
-  verificationDetails            String? // JSON as text
-  createdAt                      DateTime @default(now()) @map("created_at")
-  updatedAt                      DateTime @updatedAt @map("updated_at")
+  id                              String    @id @default(uuid())
+  userId                          String    @unique
+  fullName                        String?
+  companyId                       String? // Logical reference to Company.id (in PostgreSQL)
+  jobRoleId                       String? // Logical reference to JobRole.id (in PostgreSQL)
+  workEmail                       String?
+  location                        String? // JSON as text
+  isVerified                      Boolean   @default(false)
+  workEmailVerified               Boolean   @default(false)
+  emailVerificationToken          String?
+  emailVerificationTokenExpiresAt DateTime?
+  recruiterVerificationMethodsId  String?
+  verifiedBy                      String?
+  verificationDetails             String? // JSON as text
+  createdAt                       DateTime  @default(now()) @map("created_at")
+  updatedAt                       DateTime  @updatedAt @map("updated_at")
 
   recruiterVerificationMethods RecruiterVerificationMethods? @relation(fields: [recruiterVerificationMethodsId], references: [id])
 
@@ -248,4 +251,19 @@ model OTP {
 
   @@unique([phoneNumber, countryCode])
   @@map("otps")
+}
+
+model EmailOTP {
+  id        String   @id @default(uuid())
+  email     String
+  otp       String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  userId    String?
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([email])
+  @@map("email_otps")
 }

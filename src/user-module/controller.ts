@@ -80,6 +80,36 @@ class UserController {
                 }, 404);
             }
 
+            // Check if user has a candidate profile
+            const candidateProfile = await this.prisma.profile.findFirst({
+                where: {
+                    userId: userInfo.userId
+                }
+            });
+
+            // Check if user has a recruiter profile
+            const recruiterProfile = await this.prisma.recruiterProfile.findFirst({
+                where: {
+                    userId: userInfo.userId
+                }
+            });
+
+            // Determine onboarding and verification status
+            let isOnboardingComplete = false;
+            let isVerified = false;
+
+            if (recruiterProfile) {
+                // For recruiters: onboarding is complete if they have basic profile info
+                isOnboardingComplete = !!(recruiterProfile.fullName && recruiterProfile.workEmail);
+                // Verification status from recruiter profile
+                isVerified = recruiterProfile.isVerified;
+            } else if (candidateProfile) {
+                // For candidates: onboarding is complete if they have basic profile info
+                isOnboardingComplete = !!(candidateProfile.fullName && candidateProfile.email);
+                // Candidates are considered verified once they complete their profile
+                isVerified = isOnboardingComplete;
+            }
+
             return c.json({
                 success: true,
                 data: {
@@ -87,7 +117,9 @@ class UserController {
                     phoneNumber: user.phoneNumber,
                     countryCode: user.countryCode,
                     createdAt: user.createdAt,
-                    updatedAt: user.updatedAt
+                    updatedAt: user.updatedAt,
+                    isOnboardingComplete,
+                    isVerified
                 }
             }, 200);
 

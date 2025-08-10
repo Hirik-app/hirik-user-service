@@ -153,6 +153,9 @@ exports.Prisma.RecruiterProfileScalarFieldEnum = {
   workEmail: 'workEmail',
   location: 'location',
   isVerified: 'isVerified',
+  workEmailVerified: 'workEmailVerified',
+  emailVerificationToken: 'emailVerificationToken',
+  emailVerificationTokenExpiresAt: 'emailVerificationTokenExpiresAt',
   recruiterVerificationMethodsId: 'recruiterVerificationMethodsId',
   verifiedBy: 'verifiedBy',
   verificationDetails: 'verificationDetails',
@@ -281,6 +284,18 @@ exports.Prisma.OTPScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.EmailOTPScalarFieldEnum = {
+  id: 'id',
+  email: 'email',
+  otp: 'otp',
+  expiresAt: 'expiresAt',
+  attempts: 'attempts',
+  userId: 'userId',
+  verified: 'verified',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -305,7 +320,8 @@ exports.Prisma.ModelName = {
   NotificationPreferences: 'NotificationPreferences',
   JobSearchPreferences: 'JobSearchPreferences',
   FCMToken: 'FCMToken',
-  OTP: 'OTP'
+  OTP: 'OTP',
+  EmailOTP: 'EmailOTP'
 };
 
 /**

@@ -15,12 +15,7 @@ authRouter.post('/verify-otp', (c) => {
     return userController.verifyOTP(c);
 });
 
-authRouter.post('/refresh-token', (c, next) => {
-    const middleware = jwt({
-        secret: (c.env as any).REFRESH_TOKEN_SECRET,
-    });
-    return middleware(c, next);
-}, (c) => {
+authRouter.post('/refresh-token', (c) => {
     const userController = new UserController(c.env);
     return userController.refreshToken(c);
 });

@@ -21,4 +21,28 @@ recruiterRoutes.post('/verify/:recruiterId', (c) => {
     return recruiterController.verifyRecruiter(c);
 });
 
+// Send verification email
+recruiterRoutes.post('/send-verification-email', (c) => {
+	const recruiterController = new RecruiterController(c.env);
+	return recruiterController.sendVerificationEmail(c);
+});
+
+// Verify email
+recruiterRoutes.get('/verify-email/:token', (c) => {
+	const recruiterController = new RecruiterController(c.env);
+	return recruiterController.verifyEmail(c);
+});
+
+// Send email OTP
+recruiterRoutes.post('/send-email-otp', (c) => {
+	const recruiterController = new RecruiterController(c.env);
+	return recruiterController.sendEmailOtp(c);
+});
+
+// Verify email OTP
+recruiterRoutes.post('/verify-email-otp', (c) => {
+	const recruiterController = new RecruiterController(c.env);
+	return recruiterController.verifyEmailOtp(c);
+});
+
 export default recruiterRoutes;
