@@ -356,6 +356,16 @@ class UserController {
                 }, 400);
             }
 
+            // Validate input
+            const validationResult = experienceSchema.safeParse(body);
+            if (!validationResult.success) {
+                return c.json({
+                    success: false,
+                    message: 'Validation error',
+                    errors: validationResult.error.issues
+                }, 400);
+            }
+
             // Verify profile belongs to user
             const profile = await this.prisma.profile.findFirst({
                 where: {
@@ -373,7 +383,7 @@ class UserController {
 
             const experience = await this.prisma.experience.create({
                 data: {
-                    ...body,
+                    ...validationResult.data,
                     profileId
                 }
             });
@@ -412,6 +422,16 @@ class UserController {
                 }, 400);
             }
 
+            // Validate input (partial update)
+            const validationResult = experienceSchema.partial().safeParse(body);
+            if (!validationResult.success) {
+                return c.json({
+                    success: false,
+                    message: 'Validation error',
+                    errors: validationResult.error.issues
+                }, 400);
+            }
+
             // Verify experience belongs to user's profile
             const experience = await this.prisma.experience.findFirst({
                 where: {
@@ -433,7 +453,7 @@ class UserController {
                 where: {
                     id: experienceId
                 },
-                data: body
+                data: validationResult.data
             });
 
             return c.json({
