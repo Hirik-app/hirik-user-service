@@ -6,28 +6,30 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@tests': path.resolve(__dirname, './tests'),
-      '@utils': path.resolve(__dirname, './src/utils'),
       '@auth': path.resolve(__dirname, './src/auth-module'),
       '@user': path.resolve(__dirname, './src/user-module'),
-      '@recruiter': path.resolve(__dirname, './src/recruiter-module'),
       '@education': path.resolve(__dirname, './src/education-module'),
       '@preferences': path.resolve(__dirname, './src/preferences-module'),
+      '@recruiter': path.resolve(__dirname, './src/recruiter-module'),
       '@resume': path.resolve(__dirname, './src/resume-module'),
+      '@services': path.resolve(__dirname, './src/services'),
+      '@utils': path.resolve(__dirname, './src/utils'),
     }
   },
   test: {
     globals: true,
     environment: 'happy-dom',
-    setupFiles: ['./tests/setup.ts'],
-    include: ['tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    setupFiles: ['./tests/setup/test-setup.ts'],
+    include: ['tests/**/*.{test,spec}.{js,ts,jsx,tsx}'],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
       '**/coverage/**',
       '**/.{idea,git,cache,output,temp}/**',
-      '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build}.config.*',
-      '**/src/generated/**'
+      '**/src/generated/**',
+      '**/*.config.*'
     ],
+    // Test execution configuration
     pool: 'forks',
     poolOptions: {
       forks: {
@@ -42,88 +44,116 @@ export default defineConfig({
     },
     isolate: true,
     passWithNoTests: false,
-    logHeapUsage: true,
-    testTimeout: 30000,
+    // Timeouts optimized for unit tests
+    testTimeout: 15000,
     hookTimeout: 10000,
-    teardownTimeout: 10000,
+    teardownTimeout: 5000,
+    // Performance settings
     bail: 0,
-    retry: 1,
-    // Performance benchmarking
-    benchmark: {
-      include: ['**/*.{bench,benchmark}.?(c|m)[jt]s?(x)'],
-      exclude: ['node_modules', 'dist', '.idea', '.git', '.cache']
-    },
+    retry: 0,
+    logHeapUsage: false,
+    // Coverage configuration
     coverage: {
       provider: 'v8',
-      enabled: false,
-      reporter: ['text', 'text-summary', 'json', 'html', 'lcov', 'clover'],
+      enabled: true,
+      reporter: ['text', 'text-summary', 'json', 'html', 'lcov'],
       reportsDirectory: './coverage',
       reportOnFailure: true,
+      cleanOnRerun: true,
       include: [
-        'src/**/*.{js,jsx,ts,tsx}',
+        'src/**/*.{js,ts}',
         '!src/**/*.d.ts',
         '!src/generated/**',
-        '!src/**/*.test.{js,jsx,ts,tsx}',
-        '!src/**/*.spec.{js,jsx,ts,tsx}'
+        '!src/index.ts'
       ],
       exclude: [
         'node_modules/**',
         'tests/**',
         '**/*.d.ts',
-        '**/*.test.{js,jsx,ts,tsx}',
-        '**/*.spec.{js,jsx,ts,tsx}',
+        '**/*.test.{js,ts}',
+        '**/*.spec.{js,ts}',
         '**/coverage/**',
         '**/dist/**',
         'src/generated/**',
-        'src/index.ts',
-        '**/*.config.{js,ts}',
-        '**/types.ts'
+        '**/*.config.{js,ts}'
       ],
+      // Module-specific coverage thresholds per spec requirements
       thresholds: {
         global: {
-          branches: 90,
-          functions: 90,
-          lines: 90,
-          statements: 90
+          branches: 80,
+          functions: 80,
+          lines: 80,
+          statements: 80
         },
+        // Auth module - highest coverage due to security criticality
         'src/auth-module/**': {
-          branches: 95,
-          functions: 95,
-          lines: 95,
-          statements: 95
-        },
-        'src/user-module/**': {
           branches: 90,
           functions: 90,
           lines: 90,
           statements: 90
+        },
+        // Core modules - 85% coverage target
+        'src/user-module/**': {
+          branches: 85,
+          functions: 85,
+          lines: 85,
+          statements: 85
+        },
+        'src/education-module/**': {
+          branches: 85,
+          functions: 85,
+          lines: 85,
+          statements: 85
+        },
+        'src/preferences-module/**': {
+          branches: 85,
+          functions: 85,
+          lines: 85,
+          statements: 85
+        },
+        'src/recruiter-module/**': {
+          branches: 85,
+          functions: 85,
+          lines: 85,
+          statements: 85
+        },
+        'src/resume-module/**': {
+          branches: 85,
+          functions: 85,
+          lines: 85,
+          statements: 85
+        },
+        // Utils and services - 80% coverage target
+        'src/utils/**': {
+          branches: 80,
+          functions: 80,
+          lines: 80,
+          statements: 80
+        },
+        'src/services/**': {
+          branches: 80,
+          functions: 80,
+          lines: 80,
+          statements: 80
         }
       },
       all: true,
       skipFull: false,
-      perFile: false
+      perFile: true
     },
-    // Environment-specific configurations
+    // Test environment variables
     env: {
       NODE_ENV: 'test',
-      VITEST: 'true'
+      VITEST: 'true',
+      DATABASE_URL: 'file:./prisma/test.db'
     },
-    // Reporter configuration for enhanced output
-    reporter: ['verbose', 'json', 'html'],
+    // Enhanced reporting for development
+    reporter: ['verbose', 'json'],
     outputFile: {
-      json: './coverage/test-results.json',
-      html: './coverage/test-results.html'
-    },
-    // Browser mode configuration (if needed for e2e)
-    browser: {
-      enabled: false,
-      name: 'chromium',
-      provider: 'playwright',
-      headless: true,
-      screenshotOnFailure: false
+      json: './coverage/test-results.json'
     }
   },
-  // Shared configuration for different test types
+  // Build configuration for test environment
   define: {
     __TEST__: true,
     __DEV__: false,
