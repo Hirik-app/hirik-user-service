@@ -5,20 +5,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Hono } from 'hono';
+
+// Import the mock BEFORE importing any modules that use Prisma
+import { mockPrismaClient, setupMockEducation } from '../__mocks__/prisma';
+
 import educationRoutes from '../../src/education-module/routes';
 import { createMockEducation } from '../__mocks__/factories';
-
-// Mock the EducationController
-vi.mock('../../src/education-module/controller', () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      getEducationByProfileId: vi.fn(),
-      addEducationByProfileId: vi.fn(),
-      updateEducationById: vi.fn(),
-      deleteEducationById: vi.fn()
-    }))
-  };
-});
 
 describe('Education Routes', () => {
   let app: Hono;
@@ -26,13 +18,35 @@ describe('Education Routes', () => {
 
   beforeEach(() => {
     app = new Hono();
+    
+    // Add JWT middleware mock BEFORE routes
+    app.use('*', (c, next) => {
+      c.set('jwtPayload', {
+        userId: 'test-user-id',
+        phoneNumber: '+1234567890',
+        type: 'access',
+        exp: Date.now() + 3600000
+      });
+      return next();
+    });
+    
     app.route('/education', educationRoutes);
     
     mockEnv = {
       DB: 'mock-db'
     };
     
+    // Reset all Prisma mocks before each test
     vi.clearAllMocks();
+    Object.values(mockPrismaClient).forEach(model => {
+      if (typeof model === 'object' && model !== null) {
+        Object.values(model).forEach(method => {
+          if (typeof method === 'function' && 'mockReset' in method) {
+            method.mockReset();
+          }
+        });
+      }
+    });
   });
 
   afterEach(() => {
@@ -42,19 +56,18 @@ describe('Education Routes', () => {
   describe('GET /education/profile/:profileId', () => {
     it('should return education records for profile', async () => {
       const profileId = 'test-profile-id';
+      const userId = 'test-user-id';
       const educationRecords = [
         createMockEducation({ profileId }),
         createMockEducation({ profileId })
       ];
       
-      const EducationController = (await import('../../src/education-module/controller')).default;
-      const mockController = new EducationController();
-      (mockController.getEducationByProfileId as any).mockResolvedValue(
-        new Response(JSON.stringify({
-          success: true,
-          education: educationRecords
-        }), { status: 200 })
-      );
+      // Mock the database calls that the controller will make
+      mockPrismaClient.profile.findFirst.mockResolvedValue({
+        id: profileId,
+        userId: userId
+      });
+      mockPrismaClient.education.findMany.mockResolvedValue(educationRecords);
 
       const req = new Request(`http://localhost/education/profile/${profileId}`, {
         method: 'GET',
@@ -68,18 +81,16 @@ describe('Education Routes', () => {
 
       expect(res.status).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.education).toHaveLength(2);
+      expect(responseData.data).toHaveLength(2);
     });
 
     it('should handle empty education list', async () => {
       const profileId = 'test-profile-id';
       
-      const EducationController = (await import('../../src/education-module/controller')).default;
-      const mockController = new EducationController();
-      (mockController.getEducationByProfileId as any).mockResolvedValue(
+      mockGetEducationByProfileId.mockResolvedValue(
         new Response(JSON.stringify({
           success: true,
-          education: []
+          data: []
         }), { status: 200 })
       );
 
@@ -95,7 +106,8 @@ describe('Education Routes', () => {
 
       expect(res.status).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.education).toHaveLength(0);
+      expect(responseData.data).toHaveLength(0);
+      expect(mockGetEducationByProfileId).toHaveBeenCalledOnce();
     });
 
     it('should handle unauthorized access', async () => {
@@ -548,7 +560,7 @@ describe('Education Routes', () => {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer valid-jwt-token'
         },
-        body: 'invalid-json{'
+        body: 'not-json-at-all' // Non-JSON string to test error handling
       });
 
       const res = await app.request(req, mockEnv);

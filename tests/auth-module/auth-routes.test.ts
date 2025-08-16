@@ -139,7 +139,7 @@ describe('Auth Routes', () => {
       const req = new Request('http://localhost/auth/login-with-phone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: 'invalid-json{'
+        body: 'not-json-at-all' // Non-JSON string to test error handling
       });
 
       const res = await app.request(req, mockEnv);

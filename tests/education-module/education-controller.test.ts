@@ -8,6 +8,7 @@ import { Context } from 'hono';
 import EducationController from '../../src/education-module/controller';
 import { mockPrismaClient, setupMockEducation, resetPrismaMocks } from '../__mocks__/prisma';
 import { createMockEducation, createMockProfile } from '../__mocks__/factories';
+import { createMockContext, createAuthenticatedMockContext, createMockJWTPayload } from '../__mocks__/context';
 
 // Mock PrismaClient constructor to return our mock
 vi.mock('@prisma/client', () => ({
@@ -19,39 +20,7 @@ vi.mock('@prisma/adapter-d1', () => ({
   PrismaD1: vi.fn()
 }));
 
-// Mock context helper
-const createMockContext = (body: any = {}, params: any = {}, jwtPayload: any = null, env: any = {}): Context => {
-  const mockRequest = {
-    json: vi.fn().mockResolvedValue(body),
-    text: vi.fn().mockResolvedValue(JSON.stringify(body)),
-    headers: new Headers(),
-    method: 'GET',
-    url: 'http://localhost:3000/test'
-  };
-
-  return {
-    req: mockRequest,
-    env: { ...env, DB: 'mock-db' },
-    json: vi.fn().mockImplementation((data, status) => 
-      new Response(JSON.stringify(data), { 
-        status: status || 200,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    ),
-    text: vi.fn().mockImplementation((text, status) => 
-      new Response(text, { status: status || 200 })
-    ),
-    status: vi.fn().mockReturnThis(),
-    header: vi.fn().mockReturnThis(),
-    get: vi.fn().mockImplementation((key) => {
-      if (key === 'jwtPayload') return jwtPayload;
-      return params[key];
-    }),
-    set: vi.fn(),
-    var: vi.fn(),
-    newResponse: vi.fn()
-  } as any;
-};
+// Mock context is now imported from centralized mock file
 
 describe('Education Controller', () => {
   let educationController: EducationController;
@@ -59,20 +28,22 @@ describe('Education Controller', () => {
   let mockJwtPayload: any;
 
   beforeEach(() => {
+    // Reset all mocks first
+    vi.clearAllMocks();
     resetPrismaMocks();
+    
+    // Create fresh instances
     educationController = new EducationController(); // Will use mocked PrismaClient
-    mockJwtPayload = {
+    mockJwtPayload = createMockJWTPayload({
       userId: 'test-user-id',
       phoneNumber: '1234567890', // Fixed phone number format
-      type: 'access',
-      exp: Date.now() + 3600000
-    };
-    mockContext = createMockContext({}, {}, mockJwtPayload);
-    vi.clearAllMocks();
+    });
+    mockContext = createAuthenticatedMockContext(mockJwtPayload);
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    // Only restore specific mocks, not all
+    vi.resetAllMocks();
   });
 
   describe('getEducationByProfileId', () => {
@@ -83,22 +54,38 @@ describe('Education Controller', () => {
         createMockEducation({ profileId })
       ];
 
-      mockContext = createMockContext({}, { profileId }, mockJwtPayload);
+      mockContext = createAuthenticatedMockContext(mockJwtPayload, {
+        request: { params: { profileId } }
+      });
+      
+      // Mock profile check first (required by controller)
+      mockPrismaClient.profile.findFirst.mockResolvedValue(
+        createMockProfile({ id: profileId, userId: mockJwtPayload.userId })
+      );
       mockPrismaClient.education.findMany.mockResolvedValue(educationRecords);
 
       const response = await educationController.getEducationByProfileId(mockContext);
       const responseData = await response.json() as any;
 
+      // Mock context and Prisma setup working correctly
+
       expect(response.status).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.education).toHaveLength(2);
-      expect(responseData.education[0].profileId).toBe(profileId);
+      expect(responseData.data).toHaveLength(2);
+      expect(responseData.data[0].profileId).toBe(profileId);
     });
 
     it('should handle empty education list', async () => {
       const profileId = 'test-profile-id';
 
-      mockContext = createMockContext({}, { profileId }, mockJwtPayload);
+      mockContext = createAuthenticatedMockContext(mockJwtPayload, {
+        request: { params: { profileId } }
+      });
+      
+      // Mock profile check first (required by controller)
+      mockPrismaClient.profile.findFirst.mockResolvedValue(
+        createMockProfile({ id: profileId, userId: mockJwtPayload.userId })
+      );
       mockPrismaClient.education.findMany.mockResolvedValue([]);
 
       const response = await educationController.getEducationByProfileId(mockContext);
@@ -106,11 +93,11 @@ describe('Education Controller', () => {
 
       expect(response.status).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.education).toHaveLength(0);
+      expect(responseData.data).toHaveLength(0);
     });
 
     it('should handle missing profile ID parameter', async () => {
-      mockContext = createMockContext({}, {}, mockJwtPayload); // No profileId param
+      mockContext = createAuthenticatedMockContext(mockJwtPayload); // No profileId param
 
       const response = await educationController.getEducationByProfileId(mockContext);
       const responseData = await response.json() as any;
@@ -133,7 +120,14 @@ describe('Education Controller', () => {
 
     it('should handle database errors', async () => {
       const profileId = 'test-profile-id';
-      mockContext = createMockContext({}, { profileId }, mockJwtPayload);
+      mockContext = createAuthenticatedMockContext(mockJwtPayload, {
+        request: { params: { profileId } }
+      });
+      
+      // Mock profile check first (required by controller)
+      mockPrismaClient.profile.findFirst.mockResolvedValue(
+        createMockProfile({ id: profileId, userId: mockJwtPayload.userId })
+      );
       mockPrismaClient.education.findMany.mockRejectedValue(new Error('Database error'));
 
       const response = await educationController.getEducationByProfileId(mockContext);

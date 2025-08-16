@@ -680,7 +680,7 @@ describe('User Routes', () => {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer valid-jwt-token'
         },
-        body: 'invalid-json{'
+        body: 'not-json-at-all' // Non-JSON string to test error handling
       });
 
       const res = await app.request(req, mockEnv);
